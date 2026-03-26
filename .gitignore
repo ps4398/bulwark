@@ -1,0 +1,53 @@
+# Bulwark — gitignore
+
+# Live config (use *.example as templates)
+config/nodes.yaml
+config/global.yaml
+config/awg_users.json
+config/node_overrides.json
+
+# Node secrets (UUIDs, private keys, passwords)
+config/secrets/*
+!config/secrets/.gitkeep
+
+# SQLite statistics
+config/stats.db
+
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Logs
+*.log
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/

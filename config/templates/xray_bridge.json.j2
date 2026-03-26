@@ -1,0 +1,132 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {% set enabled_nodes = exit_nodes | selectattr('enabled') | list %}
+    {% for node in enabled_nodes %}
+    {
+      "tag": "in-{{ node.name }}",
+      "listen": "0.0.0.0",
+      "port": {{ bridge_port_start + node.bridge_port_offset }},
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {% for client in node.clients %}
+          {
+            "id": "{{ client.uuid }}",
+            "flow": "xtls-rprx-vision",
+            "email": "bridge-{{ node.name }}-{{ client.name | default('user') }}-{{ loop.index }}"
+          }{% if not loop.last %},{% endif %}
+          {% endfor %}
+        ],
+        "decryption": "none",
+        "fallbacks": [
+          { "dest": 8080, "xver": 0 }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "{{ bridge_reality_dest }}",
+          "xver": 0,
+          "serverNames": [
+            "{{ bridge_reality_server_name }}",
+            "www.{{ bridge_reality_server_name }}"
+          ],
+          "privateKey": "{{ bridge_reality_private_key }}",
+          "shortIds": ["{{ bridge_reality_short_id }}"]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls"]
+      }
+    }{% if not loop.last or awg_nodes %},{% endif %}
+    {% endfor %}
+    {% for node in awg_nodes %}
+    {
+      "tag": "awg-{{ node.name }}",
+      "listen": "0.0.0.0",
+      "port": {{ awg_relay_port_start + node.port_offset }},
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "{{ node.ip }}",
+        "port": {{ awg_port }},
+        "network": "udp"
+      }
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ],
+  "outbounds": [
+    {% set enabled_nodes = exit_nodes | selectattr('enabled') | list %}
+    {% for node in enabled_nodes %}
+    {
+      "tag": "out-{{ node.name }}",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "{{ node.ip }}",
+            "port": {{ node.vless_port | default(443) }},
+            "users": [
+              {
+                "id": "{{ node.bridge_uuid }}",
+                "flow": "xtls-rprx-vision",
+                "encryption": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "{{ node.reality_server_name }}",
+          "fingerprint": "chrome",
+          "show": false,
+          "publicKey": "{{ node.reality_public_key }}",
+          "shortId": "{{ node.reality_short_id | default('') }}",
+          "spiderX": ""
+        }
+      }
+    },
+    {% endfor %}
+    {
+      "tag": "blocked",
+      "protocol": "blackhole",
+      "settings": {}
+    }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "blocked"
+      },
+      {% set enabled_nodes = exit_nodes | selectattr('enabled') | list %}
+      {% for node in enabled_nodes %}
+      {
+        "type": "field",
+        "inboundTag": ["in-{{ node.name }}"],
+        "outboundTag": "out-{{ node.name }}"
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}
+    ]
+  },
+  "policy": {
+    "levels": {
+      "0": {
+        "handshakeTimeout": 4,
+        "connIdle": 300,
+        "uplinkOnly": 1,
+        "downlinkOnly": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+---
+# Bulwark — global configuration
+# Генерируется автоматически при ./setup.sh
+# AWG-параметры обфускации рандомизируются при каждой установке.
+
+monitoring:
+  interval: 30
+  failover_threshold: 3
+  icmp_timeout: 5
+  tcp_timeout: 5
+
+telegram:
+  bot_token: ""
+  chat_id: ""
+  enabled: true
+  admin_user_ids: []
+
+software:
+  xray_version: "26.2.6"
+  hysteria2_version: "latest"
+
+amneziawg:
+  jc: 0          # генерируется setup.sh
+  jmin: 0
+  jmax: 0
+  s3_default: 0
+  s4_default: 0
+  h_range_default: 0
+  h4_range_default: 0
+  i1: ""
+  i2: ""
+
+subscription:
+  base_url: ""
+
+ports:
+  vless_reality: 443
+  hysteria2: 8443
+  amneziawg: 51820
+
+bridge:
+  inbound_port_start: 0      # генерируется setup.sh
+  awg_relay_port_start: 0
+  awg_relay_port_start_single: 0
+  xray_config_path: "/usr/local/etc/xray/config.json"
+  xray_service: "xray"
+
+xray:
+  config_path: "/usr/local/etc/xray/config.json"
+  log_dir: "/var/log/xray"
+  binary: "/usr/local/bin/xray"
+  service: "xray"
+
+hysteria2:
+  config_path: "/etc/hysteria/config.yaml"
+  cert_path: "/etc/hysteria/server.crt"
+  key_path: "/etc/hysteria/server.key"
+  binary: "/usr/local/bin/hysteria"
+  service: "hysteria2"
+  masquerade_url: ""    # генерируется setup.sh
+  bandwidth_up: "1 gbps"
+  bandwidth_down: "1 gbps"
+
+amneziawg_server:
+  config_path: "/etc/amnezia/amneziawg/awg0.conf"
+  interface: "awg0"
+  service: "wg-quick@awg0"
+
+logging:
+  level: "INFO"
+  file: "bulwark.log"

@@ -1,0 +1,88 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "vless-in",
+      "listen": "0.0.0.0",
+      "port": {{ vless_reality_port | default(443) }},
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {% for client in clients %}
+          {
+            "id": "{{ client.uuid }}",
+            "flow": "xtls-rprx-vision",
+            "email": "{{ client.name | default('user' + loop.index | string) }}"
+          }{% if not loop.last %},{% endif %}
+          {% endfor %}
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "{{ reality_dest }}",
+          "xver": 0,
+          "serverNames": [
+            "{{ reality_server_name }}"
+          ],
+          "privateKey": "{{ reality_private_key }}",
+          "shortIds": [
+            "{{ reality_short_id | default('') }}"
+          ]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {
+        "domainStrategy": "UseIPv4"
+      }
+    },
+    {
+      "tag": "blocked",
+      "protocol": "blackhole",
+      "settings": {}
+    }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "blocked"
+      },
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "network": "tcp,udp"
+      }
+    ]
+  },
+  "policy": {
+    "levels": {
+      "0": {
+        "handshakeTimeout": 4,
+        "connIdle": 300,
+        "uplinkOnly": 1,
+        "downlinkOnly": 1
+      }
+    },
+    "system": {
+      "statsInboundUplink": false,
+      "statsInboundDownlink": false
+    }
+  }
+}

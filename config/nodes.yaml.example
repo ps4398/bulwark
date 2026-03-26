@@ -1,0 +1,23 @@
+---
+# Bulwark — node inventory
+#
+# Генерируется автоматически при ./setup.sh
+# Остальные ноды добавляются через Telegram-бот (wizard).
+# Ручное редактирование обычно не требуется.
+
+nodes:
+  management:
+    name: management
+    display_name: "Management Bridge"
+    ip: "0.0.0.0"
+    ssh_port: 22
+    ssh_user: root
+    ssh_key_path: ""
+    ssh_password_env: "MANAGEMENT_SSH_PASSWORD"
+    role: bridge
+    region: ru
+    priority: 1
+    enabled: true
+    protocols: []
+    inbound_port_start: 0              # генерируется setup.sh
+    description: "Management bridge node."
