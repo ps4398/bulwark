@@ -311,29 +311,12 @@ class AWGMixin:
         )
 
     def _do_awg_add_peer(self, node) -> str:
-        """Generate keys on node, add peer, push config. Returns vpn:// link."""
+        """Generate keys on node, add peer to ALL AWG nodes, push config. Returns vpn:// link."""
         with self._get_peer_lock(node.name):
             return self._do_awg_add_peer_impl(node)
 
-    def _do_awg_add_peer_impl(self, node) -> str:
-        import yaml as _yaml
-        from core.config_gen import ConfigGenerator, REGION_OCTET
-
-        cg = ConfigGenerator()
-        secrets = cg.load_secrets(node.name)
-        peers: list[dict] = secrets.get("awg_peers", [])
-
-        max_last = 1
-        for p in peers:
-            addr = p.get("address", "")
-            try:
-                max_last = max(max_last, int(addr.split(".")[-1]))
-            except (ValueError, IndexError):
-                pass
-        region_octet = REGION_OCTET.get(node.region, 99)
-        next_ip = f"10.{region_octet}.0.{max_last + 1}"
-        peer_name = f"peer_{len(peers) + 1}"
-
+    def _generate_awg_keypair(self, node) -> tuple[str, str]:
+        """SSH to node, generate AWG keypair. Returns (private_key, public_key)."""
         with self.nm.ssh(node) as conn:
             out, err, rc = conn.exec("awg genkey")
             if rc != 0:
@@ -352,41 +335,119 @@ class AWGMixin:
                 raise RuntimeError("Failed to derive public key")
             pub_key = pub_out.strip()
 
-            new_peer = {
-                "name": peer_name,
-                "address": next_ip,
-                "private_key": priv_key,
-                "public_key": pub_key,
-            }
-            peers.append(new_peer)
-            secrets["awg_peers"] = peers
+        return priv_key, pub_key
 
-            if "outbound_iface" not in secrets:
-                iface_out, _, _ = conn.exec(
-                    "ip route | awk '/default/{print $5; exit}'"
-                )
-                iface = iface_out.strip() or "eth0"
-                secrets["outbound_iface"] = iface
+    def _push_peer_to_all_nodes(
+        self, cg, new_peer: dict, *, owner: str = "",
+    ) -> None:
+        """Add peer to every AWG exit node, push config, restart service.
 
-            path = cg.secrets_dir / f"{node.name}.yaml"
-            with open(path, "w", encoding="utf-8") as fh:
-                _yaml.dump(
-                    dict(sorted(secrets.items())), fh,
-                    allow_unicode=True, default_flow_style=False,
-                )
+        Skips nodes where this public_key already exists.
+        Errors on individual nodes are logged but don't block others.
+        """
+        import logging
+        import yaml as _yaml
+        from core.config_gen import REGION_OCTET
 
-            awg_cfg_content = cg.generate_amneziawg(node, secrets)
-            awg_cfg_path = cg._load_global().get("amneziawg_server", {}).get(
-                "config_path", "/etc/amnezia/amneziawg/awg0.conf"
-            )
-            conn.upload_content(awg_cfg_content, awg_cfg_path)
-            conn.exec("chmod 600 " + awg_cfg_path)
-            _, restart_err, restart_rc = conn.exec(
-                "systemctl restart wg-quick@awg0", timeout=15,
-            )
-            if restart_rc != 0:
-                raise RuntimeError(
-                    f"AWG restart failed (rc={restart_rc}): {restart_err}"
-                )
+        log = logging.getLogger(__name__)
+        awg_cfg_path = cg._load_global().get("amneziawg_server", {}).get(
+            "config_path", "/etc/amnezia/amneziawg/awg0.conf"
+        )
 
-        return cg.generate_amneziawg_vpn_link(node, secrets, new_peer)
+        awg_nodes = [
+            n for n in self.nm.exit_nodes()
+            if "amneziawg" in n.protocols
+        ]
+
+        for target in awg_nodes:
+            try:
+                secrets = cg.load_secrets(target.name)
+                peers: list[dict] = secrets.get("awg_peers", [])
+
+                # Skip if peer already exists on this node
+                if any(p.get("public_key") == new_peer["public_key"] for p in peers):
+                    continue
+
+                # Compute region-specific IP
+                region_octet = REGION_OCTET.get(target.region, 99)
+                max_last = 1
+                for p in peers:
+                    try:
+                        max_last = max(max_last, int(p.get("address", "").split(".")[-1]))
+                    except (ValueError, IndexError):
+                        pass
+                node_ip = f"10.{region_octet}.0.{max_last + 1}"
+
+                node_peer = {
+                    "name": new_peer["name"],
+                    "address": node_ip,
+                    "private_key": new_peer["private_key"],
+                    "public_key": new_peer["public_key"],
+                }
+                if owner:
+                    node_peer["owner"] = owner
+
+                peers.append(node_peer)
+                secrets["awg_peers"] = peers
+
+                # Auto-detect outbound interface if missing
+                with self.nm.ssh(target) as conn:
+                    if "outbound_iface" not in secrets:
+                        iface_out, _, _ = conn.exec(
+                            "ip route | awk '/default/{print $5; exit}'"
+                        )
+                        secrets["outbound_iface"] = iface_out.strip() or "eth0"
+
+                    path = cg.secrets_dir / f"{target.name}.yaml"
+                    with open(path, "w", encoding="utf-8") as fh:
+                        _yaml.dump(
+                            dict(sorted(secrets.items())), fh,
+                            allow_unicode=True, default_flow_style=False,
+                        )
+
+                    awg_cfg_content = cg.generate_amneziawg(target, secrets)
+                    conn.upload_content(awg_cfg_content, awg_cfg_path)
+                    conn.exec("chmod 600 " + awg_cfg_path)
+                    _, restart_err, restart_rc = conn.exec(
+                        "systemctl restart wg-quick@awg0", timeout=15,
+                    )
+                    if restart_rc != 0:
+                        log.error(
+                            "AWG restart failed on %s (rc=%d): %s",
+                            target.name, restart_rc, restart_err,
+                        )
+
+                log.info("AWG peer %s pushed to %s (%s)", new_peer["name"], target.name, node_ip)
+
+            except Exception:
+                log.exception("Failed to push AWG peer to %s", target.name)
+
+    def _do_awg_add_peer_impl(self, node) -> str:
+        from core.config_gen import ConfigGenerator, REGION_OCTET
+
+        cg = ConfigGenerator()
+        secrets = cg.load_secrets(node.name)
+        peers: list[dict] = secrets.get("awg_peers", [])
+
+        peer_name = f"peer_{len(peers) + 1}"
+
+        # Generate keys on the selected node
+        priv_key, pub_key = self._generate_awg_keypair(node)
+
+        new_peer = {
+            "name": peer_name,
+            "private_key": priv_key,
+            "public_key": pub_key,
+        }
+
+        # Push to ALL AWG exit nodes
+        self._push_peer_to_all_nodes(cg, new_peer)
+
+        # Reload secrets for the selected node to generate vpn:// link
+        secrets = cg.load_secrets(node.name)
+        # Find peer by public_key
+        for p in secrets.get("awg_peers", []):
+            if p.get("public_key") == pub_key:
+                return cg.generate_amneziawg_vpn_link(node, secrets, p)
+
+        raise RuntimeError("Peer was pushed but not found in secrets after reload")
