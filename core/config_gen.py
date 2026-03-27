@@ -313,7 +313,7 @@ class ConfigGenerator:
                     # Protocol key is always "awg" regardless of version (containerTypeToProtocolString)
                     "awg": {
                         "isThirdPartyConfig": True,
-                        "protocol_version": "2",
+                        "protocolVersion": "2",
                         "last_config": _json.dumps(last_config_obj, ensure_ascii=False),
                         "port": str(port),
                         "transport_proto": "udp",
