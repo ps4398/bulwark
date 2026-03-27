@@ -272,18 +272,24 @@ class ConfigGenerator:
         )
 
         # last_config is a JSON-stringified object — parsed by client via QJsonDocument::fromJson()
+        # All AWG params must be strings — client reads them as QString
         last_config_obj: dict[str, Any] = {
-            "Jc": jc,
-            "Jmin": jmin,
-            "Jmax": jmax,
-            "S1": s1,
-            "S2": s2,
-            "S3": s3,
-            "S4": s4,
             "H1": h1_s,
             "H2": h2_s,
             "H3": h3_s,
             "H4": h4_s,
+            "I1": i1 or "",
+            "I2": i2 or "",
+            "I3": "",
+            "I4": "",
+            "I5": "",
+            "Jc": str(jc),
+            "Jmax": str(jmax),
+            "Jmin": str(jmin),
+            "S1": str(s1),
+            "S2": str(s2),
+            "S3": str(s3),
+            "S4": str(s4),
             "allowed_ips": ["0.0.0.0/0", "::/0"],
             "client_ip": f"{client_addr}/32",
             "client_priv_key": client_privkey,
@@ -291,14 +297,34 @@ class ConfigGenerator:
             "hostName": host,
             "mtu": "1420",
             "persistent_keep_alive": "25",
-            "port": port,
+            "port": str(port),
             "psk_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
             "server_pub_key": server_pubkey,
         }
-        if i1:
-            last_config_obj["i1"] = i1
-        if i2:
-            last_config_obj["i2"] = i2
+
+        # AWG params at container level — client reads obfuscation from here
+        awg_container: dict[str, Any] = {
+            "H1": h1_s,
+            "H2": h2_s,
+            "H3": h3_s,
+            "H4": h4_s,
+            "I1": i1 or "",
+            "I2": i2 or "",
+            "I3": "",
+            "I4": "",
+            "I5": "",
+            "Jc": str(jc),
+            "Jmax": str(jmax),
+            "Jmin": str(jmin),
+            "S1": str(s1),
+            "S2": str(s2),
+            "S3": str(s3),
+            "S4": str(s4),
+            "protocol_version": "2",
+            "last_config": _json.dumps(last_config_obj, ensure_ascii=False),
+            "port": str(port),
+            "transport_proto": "udp",
+        }
 
         cfg = {
             "hostName": host,
@@ -311,13 +337,7 @@ class ConfigGenerator:
                 {
                     "container": "amnezia-awg2",
                     # Protocol key is always "awg" regardless of version (containerTypeToProtocolString)
-                    "awg": {
-                        "isThirdPartyConfig": True,
-                        "protocolVersion": "2",
-                        "last_config": _json.dumps(last_config_obj, ensure_ascii=False),
-                        "port": str(port),
-                        "transport_proto": "udp",
-                    },
+                    "awg": awg_container,
                 }
             ],
         }
