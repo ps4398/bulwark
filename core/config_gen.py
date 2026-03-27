@@ -150,7 +150,7 @@ class ConfigGenerator:
             "region": node.region,
             "region_octet": region_octet,
             "private_key": secrets.get("awg_private_key", ""),
-            "listen_port": int(ports.get("amneziawg", 51820)),
+            "listen_port": int(secrets.get("awg_listen_port", ports.get("amneziawg", 51820))),
             "jc": int(awg_cfg.get("jc", 4)),
             "jmin": int(awg_cfg.get("jmin", 40)),
             "jmax": int(awg_cfg.get("jmax", 70)),
@@ -225,7 +225,7 @@ class ConfigGenerator:
 
         # Endpoint: bridge relay or direct
         host = relay_host or node.ip
-        port = relay_port or int(ports.get("amneziawg", 51820))
+        port = relay_port or int(secrets.get("awg_listen_port", ports.get("amneziawg", 51820)))
 
         client_addr    = peer.get("address", f"10.{region_octet}.0.2")
         client_privkey = peer.get("private_key", "")
@@ -292,7 +292,7 @@ class ConfigGenerator:
             "mtu": "1420",
             "persistent_keep_alive": "25",
             "port": port,
-            "psk_key": "",
+            "psk_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
             "server_pub_key": server_pubkey,
         }
         if i1:
@@ -526,10 +526,12 @@ class ConfigGenerator:
             }
             nodes_ctx.append(node_info)
             if "amneziawg" in node.protocols:
+                node_awg_port = int(secrets.get("awg_listen_port", ports.get("amneziawg", 51820)))
                 awg_nodes_ctx.append({
                     "name": node.name,
                     "ip": node.ip,
                     "port_offset": node.bridge_port_offset,
+                    "awg_port": node_awg_port,
                 })
 
         # AWG relay port config
@@ -653,7 +655,7 @@ class ConfigGenerator:
                 "protocol": "dokodemo-door",
                 "settings": {
                     "address": awg_node["ip"],
-                    "port": awg_port,
+                    "port": awg_node.get("awg_port", awg_port),
                     "network": "udp",
                 },
             })

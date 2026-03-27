@@ -54,7 +54,7 @@
       "protocol": "dokodemo-door",
       "settings": {
         "address": "{{ node.ip }}",
-        "port": {{ awg_port }},
+        "port": {{ node.awg_port or awg_port }},
         "network": "udp"
       }
     }{% if not loop.last %},{% endif %}
