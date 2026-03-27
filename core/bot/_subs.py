@@ -22,6 +22,7 @@ class SubsMixin:
             for n in exit_nodes
         ]
         rows = [node_btns[i:i+2] for i in range(0, len(node_btns), 2)]
+        rows.append([("📱 AmneziaVPN (xray)", "ax_nodes")])
         rows.append([("📋 Вся подписка", "sub_full"), ("🏠 Меню", "menu")])
         await self._show(chat_id, msg_id, text, _kb(rows))
 
@@ -97,6 +98,118 @@ class SubsMixin:
         )
         markup = _kb([[("← Подписки", "sub"), ("🏠 Меню", "menu")]])
         await self._edit(chat_id, msg_id, text, markup)
+
+    # ------------------------------------------------------------------
+    # AmneziaVPN (xray) — vpn:// links for VLESS+Reality
+    # ------------------------------------------------------------------
+
+    async def _amnezia_xray_nodes(
+        self, chat_id: int | str, msg_id: int,
+    ) -> None:
+        exit_nodes = self.nm.exit_nodes()
+        text = "📱 <b>AmneziaVPN (xray)</b>\n\nВыбери ноду:"
+        btns = [
+            (f"{_flag(n.region)} {n.display_name}", f"ax_node:{n.name}")
+            for n in exit_nodes
+            if "vless_reality" in n.protocols
+        ]
+        rows = [btns[i:i+2] for i in range(0, len(btns), 2)]
+        rows.append([("← Подписки", "sub"), ("🏠 Меню", "menu")])
+        await self._edit(chat_id, msg_id, text, _kb(rows))
+
+    async def _amnezia_xray_routes(
+        self, chat_id: int | str, msg_id: int, node_name: str,
+    ) -> None:
+        node = await self._resolve_node(chat_id, msg_id, node_name)
+        if not node:
+            return
+
+        from core.bot._helpers import _flag as flag_fn
+        from core.config_gen import BRIDGE_SHORT as _BS
+
+        text = (
+            f"📱 <b>{node.display_name}</b> {_flag(node.region)}\n\n"
+            "Выбери маршрут:"
+        )
+        rows = [[(f"🔗 Прямая", f"ax_link:{node_name}:direct")]]
+        bridge_row = []
+        for bridge in self.nm.bridge_nodes():
+            if not bridge.enabled:
+                continue
+            label = _BS.get(bridge.name, bridge.display_name)
+            bridge_row.append(
+                (f"🌐 {label}", f"ax_link:{node_name}:{bridge.name}")
+            )
+            if len(bridge_row) == 3:
+                rows.append(bridge_row)
+                bridge_row = []
+        if bridge_row:
+            rows.append(bridge_row)
+
+        rows.append([("← Ноды", "ax_nodes"), ("🏠 Меню", "menu")])
+        await self._edit(chat_id, msg_id, text, _kb(rows))
+
+    async def _amnezia_xray_link(
+        self, chat_id: int | str, msg_id: int,
+        node_name: str, route: str,
+    ) -> None:
+        node = await self._resolve_node(chat_id, msg_id, node_name)
+        if not node:
+            return
+
+        await self._edit(chat_id, msg_id, "⏳ Генерирую vpn:// ссылку...")
+
+        try:
+            link = await self._run(
+                lambda: self._get_amnezia_xray_link(node_name, route)
+            )
+        except Exception as e:
+            await self._edit(chat_id, msg_id, f"❌ Ошибка: {e}")
+            return
+
+        route_label = "Прямая" if route == "direct" else f"via {route}"
+        text = (
+            f"📱 <b>{node.display_name} / {route_label}</b>\n\n"
+            "Нажми чтобы скопировать:\n"
+            f"<code>{link}</code>"
+        )
+        markup = _kb([[(f"← Маршруты", f"ax_node:{node_name}"), ("🏠 Меню", "menu")]])
+        await self._edit(chat_id, msg_id, text, markup)
+
+    def _get_amnezia_xray_link(self, node_name: str, route: str) -> str:
+        from core.config_gen import ConfigGenerator, BRIDGE_SHORT as _BS
+
+        cg = ConfigGenerator()
+        global_cfg = cg._load_global()
+        bridge_cfg = global_cfg.get("bridge", {})
+        node = self.nm.get_node(node_name)
+        secrets = cg.load_secrets(node_name)
+
+        if route == "direct":
+            return cg.generate_amnezia_xray_vpn_link(node, secrets)
+
+        bridge = self.nm.get_node(route)
+        bs = cg.load_secrets(bridge.name)
+
+        if bridge.single_inbound_port:
+            node_clients = bs.get("node_clients", {})
+            nc = node_clients.get(node.name, {})
+            b_uuid = nc.get("uuid", "")
+            b_port = bridge.single_inbound_port
+        else:
+            b_uuid = bs.get("bridge_access_uuid", "")
+            b_port = bridge.inbound_port_start + node.bridge_port_offset
+
+        return cg.generate_amnezia_xray_vpn_link(
+            node, secrets,
+            relay_host=bridge.ip,
+            relay_port=b_port,
+            relay_sni=bs.get("reality_server_name", ""),
+            relay_pbk=bs.get("reality_public_key", ""),
+            relay_sid=bs.get("reality_short_id", ""),
+            relay_uuid=b_uuid,
+            relay_label=_BS.get(bridge.name, bridge.display_name),
+        )
 
     # ------------------------------------------------------------------
     # URI generation (blocking, for executor)

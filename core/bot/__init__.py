@@ -116,6 +116,10 @@ class BulwarkBot(
         r.callback_query.register(h1(self._sub_protos),           F.data.startswith("sub_node:"))
         r.callback_query.register(h2(self._sub_uri_show),         F.data.startswith("sub_uri:"))
         r.callback_query.register(h0(self._sub_full),             F.data == "sub_full")
+        # AmneziaVPN (xray) vpn:// links
+        r.callback_query.register(h0(self._amnezia_xray_nodes),  F.data == "ax_nodes")
+        r.callback_query.register(h1(self._amnezia_xray_routes), F.data.startswith("ax_node:"))
+        r.callback_query.register(h2(self._amnezia_xray_link),   F.data.startswith("ax_link:"))
         # Management
         r.callback_query.register(h0(self._mgmt_menu),            F.data == "mgmt")
         r.callback_query.register(h0(self._bridge_push),          F.data == "bridge_push")

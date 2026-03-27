@@ -404,6 +404,129 @@ class ConfigGenerator:
             desc += f" | via {relay_label}"
         return desc
 
+    def generate_amnezia_xray_vpn_link(
+        self,
+        node: "Node",
+        secrets: dict,
+        *,
+        relay_host: Optional[str] = None,
+        relay_port: Optional[int] = None,
+        relay_sni: Optional[str] = None,
+        relay_pbk: Optional[str] = None,
+        relay_sid: Optional[str] = None,
+        relay_uuid: Optional[str] = None,
+        relay_label: Optional[str] = None,
+    ) -> str:
+        """Generate a vpn:// deep link for AmneziaVPN with amnezia-xray container.
+
+        Creates a client-side xray JSON config (VLESS+Reality) and wraps it
+        in the vpn:// encoding (JSON → zlib → 4-byte length header → base64url).
+
+        For bridge routes, relay_* params override the connection endpoint
+        while the exit node's Reality settings are used for the tunnel.
+        """
+        import base64
+        import json as _json
+        import zlib
+
+        global_cfg = self._load_global()
+        ports = global_cfg.get("ports", {})
+        vless_port = int(ports.get("vless_reality", 443))
+
+        uuid = secrets.get("xray_uuid", "")
+        pub_key = secrets.get("reality_public_key", "")
+        short_id = secrets.get("reality_short_id", "")
+        sni = secrets.get("reality_server_name", "")
+
+        if relay_host:
+            # Bridge route: connect to bridge, bridge forwards to exit
+            host = relay_host
+            port = relay_port or 443
+            connect_uuid = relay_uuid or uuid
+            connect_sni = relay_sni or sni
+            connect_pbk = relay_pbk or pub_key
+            connect_sid = relay_sid or short_id
+        else:
+            # Direct route
+            host = node.ip
+            port = vless_port
+            connect_uuid = uuid
+            connect_sni = sni
+            connect_pbk = pub_key
+            connect_sid = short_id
+
+        # Client-side xray config
+        xray_client_cfg = {
+            "log": {"loglevel": "error"},
+            "inbounds": [
+                {
+                    "listen": "127.0.0.1",
+                    "port": 10808,
+                    "protocol": "socks",
+                    "settings": {"udp": True},
+                }
+            ],
+            "outbounds": [
+                {
+                    "protocol": "vless",
+                    "settings": {
+                        "vnext": [
+                            {
+                                "address": host,
+                                "port": port,
+                                "users": [
+                                    {
+                                        "id": connect_uuid,
+                                        "flow": "xtls-rprx-vision",
+                                        "encryption": "none",
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                    "streamSettings": {
+                        "network": "tcp",
+                        "security": "reality",
+                        "realitySettings": {
+                            "fingerprint": "chrome",
+                            "serverName": connect_sni,
+                            "publicKey": connect_pbk,
+                            "shortId": connect_sid,
+                            "spiderX": "",
+                        },
+                    },
+                }
+            ],
+        }
+
+        description = self._awg_link_description(node, relay_label)
+
+        cfg = {
+            "containers": [
+                {
+                    "container": "amnezia-xray",
+                    "xray": {
+                        "last_config": _json.dumps(
+                            xray_client_cfg, ensure_ascii=False,
+                        ),
+                        "port": str(port),
+                        "transport_proto": "tcp",
+                    },
+                }
+            ],
+            "defaultContainer": "amnezia-xray",
+            "description": description,
+            "dns1": "1.1.1.1",
+            "dns2": "1.0.0.1",
+            "hostName": host,
+        }
+
+        json_bytes = _json.dumps(cfg, ensure_ascii=False).encode("utf-8")
+        compressed = zlib.compress(json_bytes)
+        header = len(json_bytes).to_bytes(4, byteorder="big")
+        encoded = base64.urlsafe_b64encode(header + compressed).decode().rstrip("=")
+        return f"vpn://{encoded}"
+
     def _ensure_awg2_params(self, secrets: dict, node_name: str) -> dict:
         """Generate AWG 2.0 obfuscation parameters if absent, persist to secrets."""
         awg_cfg = self._load_global().get("amneziawg", {})
