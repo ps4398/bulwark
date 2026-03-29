@@ -148,7 +148,16 @@ class NodeDeployer:
             changed = True
 
         if "bridge_uuid" not in existing:
-            existing["bridge_uuid"] = self.generate_uuid()
+            bridge_uuid = os.environ.get("SUBSCRIPTION_UUID", "")
+            if not bridge_uuid:
+                for b in self.nm.bridge_nodes():
+                    bs = self.load_node_secrets(b.name)
+                    if bs.get("bridge_access_uuid"):
+                        bridge_uuid = bs["bridge_access_uuid"]
+                        break
+            if not bridge_uuid:
+                bridge_uuid = self.generate_uuid()
+            existing["bridge_uuid"] = bridge_uuid
             changed = True
 
         if "reality_private_key" not in existing or "reality_public_key" not in existing:
@@ -238,8 +247,8 @@ class NodeDeployer:
             "VLESS_PORT": str(ports.get("vless_reality", 443)),
             "HY2_PORT": str(ports.get("hysteria2", 8443)),
             "AWG_PORT": str(ports.get("amneziawg", 51820)),
-            "BRIDGE_PORT_START": str(bridge_cfg.get("inbound_port_start", 24431)),
-            "BRIDGE_PORT_END": str(bridge_cfg.get("inbound_port_start", 24431) + 10),
+            "BRIDGE_PORT_START": str(bridge_cfg.get("inbound_port_start", 0)),
+            "BRIDGE_PORT_END": str(bridge_cfg.get("inbound_port_start", 0) + 10),
         }
         stdout, stderr, code = self._upload_and_run_script(node, "install_base.sh", env_vars=env)
         if code != 0:

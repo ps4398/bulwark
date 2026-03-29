@@ -84,14 +84,16 @@ else
     VLESS_PORT="${VLESS_PORT:-443}"
     HY2_PORT="${HY2_PORT:-8443}"
     AWG_PORT="${AWG_PORT:-51820}"
-    BRIDGE_PORT_START="${BRIDGE_PORT_START:-24431}"
-    BRIDGE_PORT_END="${BRIDGE_PORT_END:-24435}"
+    BRIDGE_PORT_START="${BRIDGE_PORT_START:-0}"
+    BRIDGE_PORT_END="${BRIDGE_PORT_END:-0}"
 
     "${UFW}" allow 22/tcp comment "SSH"
     "${UFW}" allow "${VLESS_PORT}"/tcp comment "VLESS-Reality"
     "${UFW}" allow "${HY2_PORT}"/udp comment "Hysteria2"
     "${UFW}" allow "${AWG_PORT}"/udp comment "AmneziaWG"
-    "${UFW}" allow "${BRIDGE_PORT_START}":"${BRIDGE_PORT_END}"/tcp comment "Bridge relay"
+    if [ "${BRIDGE_PORT_START}" -gt 0 ] && [ "${BRIDGE_PORT_END}" -gt 0 ]; then
+        "${UFW}" allow "${BRIDGE_PORT_START}":"${BRIDGE_PORT_END}"/tcp comment "Bridge relay"
+    fi
 
     # Allow all outbound
     "${UFW}" default allow outgoing

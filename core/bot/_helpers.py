@@ -19,7 +19,7 @@ from aiogram.types import (
 # Project root (for config/, .env, deploy/ etc.)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-_FLAG_MAP: dict[str, str] = {"fi": "🇫🇮", "at": "🇦🇹", "ru": "🇷🇺"}
+from core.config_gen import REGION_FLAGS as _FLAG_MAP
 
 
 def _flag(region: str) -> str:

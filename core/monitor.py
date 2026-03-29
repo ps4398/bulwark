@@ -258,12 +258,12 @@ class NodeMonitor:
 
         elif node.is_bridge:
             # Single-port bridges listen on single_inbound_port (443).
-            # Multi-port bridges use inbound_port_start (24431).
+            # Multi-port bridges use inbound_port_start.
             if node.single_inbound_port:
                 check_port = node.single_inbound_port
             else:
                 bridge_cfg = self.cfg.get("bridge", {})
-                check_port = int(bridge_cfg.get("inbound_port_start", 24431))
+                check_port = int(bridge_cfg.get("inbound_port_start", 0))
             ok = await self.check_tcp_port(node.ip, check_port, timeout=5)
             protocol_statuses["bridge_inbound"] = ProtocolStatus(
                 name="bridge_inbound",

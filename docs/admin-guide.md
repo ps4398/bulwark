@@ -423,9 +423,9 @@ cp -r config/secrets/ /path/to/backup/
 ### `.env`
 
 ```bash
-TELEGRAM_BOT_TOKEN=110201543:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw
-TELEGRAM_CHAT_ID=-1001234567890
-MANAGEMENT_SSH_PASSWORD=mypassword
+TELEGRAM_BOT_TOKEN=<your-bot-token>
+TELEGRAM_CHAT_ID=<your-chat-id>
+MANAGEMENT_SSH_PASSWORD=<your-password>
 # Добавляйте пароли нод по мере их создания:
 # MY_EXIT_NODE_SSH_PASSWORD=...
 ```
@@ -437,12 +437,12 @@ nodes:
   management:
     name: management
     display_name: "Management Bridge"
-    ip: "1.2.3.4"
+    ip: "203.0.113.1"
     ssh_port: 22
     ssh_user: root
     ssh_password_env: "MANAGEMENT_SSH_PASSWORD"
     role: bridge
-    region: ru
+    region: de
     priority: 1
     enabled: true
     protocols: []

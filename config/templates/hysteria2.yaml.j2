@@ -8,16 +8,8 @@ tls:
   key: /etc/hysteria/server.key
 
 auth:
-{% if hy2_users %}
-  type: userpass
-  userpass:
-{% for name, password in hy2_users.items() %}
-    {{ name }}: "{{ password }}"
-{% endfor %}
-{% else %}
   type: password
   password: "{{ hysteria2_password }}"
-{% endif %}
 
 masquerade:
   type: proxy

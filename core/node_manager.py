@@ -36,7 +36,7 @@ class Node:
     enabled: bool
     protocols: list[str]
     description: str = ""
-    inbound_port_start: int = 24431   # bridge only: base port for exit-node inbounds
+    inbound_port_start: int = 0   # bridge only: set by setup.sh or nodes.yaml
     single_inbound_port: Optional[int] = None  # bridge only: if set, use one port with UUID routing
     bridge_port_offset: int = 0  # exit only: stable offset for bridge relay ports
 
@@ -78,7 +78,7 @@ class Node:
             enabled=bool(data.get("enabled", True)),
             protocols=list(data.get("protocols", [])),
             description=data.get("description", ""),
-            inbound_port_start=int(data.get("inbound_port_start", 24431)),
+            inbound_port_start=int(data.get("inbound_port_start", 0)),
             single_inbound_port=int(data["single_inbound_port"]) if data.get("single_inbound_port") else None,
             bridge_port_offset=int(data.get("bridge_port_offset", 0)),
         )

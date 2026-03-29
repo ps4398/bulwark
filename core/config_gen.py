@@ -30,7 +30,7 @@ BRIDGE_SHORT: dict[str, str] = {
     # Override by adding entries here: "my_bridge": "ShortLabel"
 }
 
-_REGION_FLAGS: dict[str, str] = {
+REGION_FLAGS: dict[str, str] = {
     "fi": "\U0001f1eb\U0001f1ee", "at": "\U0001f1e6\U0001f1f9",
     "ru": "\U0001f1f7\U0001f1fa", "de": "\U0001f1e9\U0001f1ea",
     "nl": "\U0001f1f3\U0001f1f1", "us": "\U0001f1fa\U0001f1f8",
@@ -395,7 +395,7 @@ class ConfigGenerator:
 
         Format: "🇫🇮 Primary" or "🇫🇮 Fallback | via Bridge1"
         """
-        flag = _REGION_FLAGS.get(node.region.lower(), node.region.upper())
+        flag = REGION_FLAGS.get(node.region.lower(), node.region.upper())
         # Extract role: "Primary" / "Fallback" from display_name
         parts = node.display_name.split()
         role = parts[-1] if len(parts) > 1 else node.display_name
@@ -638,7 +638,7 @@ class ConfigGenerator:
         if bridge_node is not None:
             port_start = bridge_node.inbound_port_start
         else:
-            port_start = int(bridge_cfg.get("inbound_port_start", 24431))
+            port_start = int(bridge_cfg.get("inbound_port_start", 0))
 
         # Load bridge's own Reality secrets
         bridge_name = bridge_node.name if bridge_node else "management"
@@ -903,12 +903,7 @@ class ConfigGenerator:
             short_id = secrets.get("reality_short_id", "")
             sni = secrets.get("reality_server_name", "")
             hy2_pass = secrets.get("hysteria2_password", "")
-            _REGION_FLAGS = {
-                "fi": "🇫🇮", "at": "🇦🇹", "ru": "🇷🇺", "de": "🇩🇪",
-                "nl": "🇳🇱", "us": "🇺🇸", "gb": "🇬🇧", "fr": "🇫🇷",
-                "ch": "🇨🇭", "se": "🇸🇪", "no": "🇳🇴", "pl": "🇵🇱",
-            }
-            flag = _REGION_FLAGS.get(node.region.lower(), node.region.upper())
+            flag = REGION_FLAGS.get(node.region.lower(), node.region.upper())
             suffix = f" {node.priority}" if node.priority > 1 else ""
 
             # --- Direct VLESS+Reality ---

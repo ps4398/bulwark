@@ -280,6 +280,12 @@ def cmd_deploy(node_name: str, protocol: str, skip_base: bool):
                 deployer.deploy_amneziawg(node)
             console.print("[green]✓ AmneziaWG deployed[/green]")
 
+        # --- Post-deploy automation ---
+        console.print()
+        _post_deploy_bridges()
+        _post_deploy_sub_push()
+        _post_deploy_bot_sync()
+
         # Send Telegram notification
         _notify_deploy_complete(node)
 
@@ -290,6 +296,176 @@ def cmd_deploy(node_name: str, protocol: str, skip_base: bool):
         _notify_deploy_failed(node, str(exc))
         err_console.print(f"[bold red]Deployment failed:[/bold red] {exc}")
         sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Post-deploy helpers — called automatically after cmd_deploy
+# ---------------------------------------------------------------------------
+
+BOT_SYNC_FILES = [
+    "cli.py",
+    "requirements.txt",
+    "core/__init__.py",
+    "core/node_manager.py",
+    "core/deployer.py",
+    "core/config_gen.py",
+    "core/bridge_manager.py",
+    "core/monitor.py",
+    "core/telegram.py",
+    "core/stats.py",
+    "core/awg_users.py",
+    "config/global.yaml",
+    "config/nodes.yaml",
+]
+
+BOT_SYNC_DIRS = [
+    "core/bot",
+    "config/secrets",
+    "config/templates",
+]
+
+
+def _post_deploy_bridges() -> None:
+    """Regenerate and push bridge config to all bridges."""
+    try:
+        with console.status("Обновление bridge-конфигов..."):
+            get_bridge().update_bridge()
+        console.print("[green]✓ Bridge configs updated[/green]")
+    except Exception as exc:
+        console.print(f"[yellow]⚠ Bridge update failed: {exc}[/yellow]")
+
+
+def _post_deploy_sub_push() -> None:
+    """Regenerate subscription files and upload to management bridge portal."""
+    import json as _json
+    import urllib.parse as _urlparse
+    from datetime import datetime as _dt
+
+    nm, cg = get_nm(), get_cg()
+    sub_uuid = os.environ.get("SUBSCRIPTION_UUID", "")
+    if not sub_uuid:
+        console.print("[yellow]⚠ SUBSCRIPTION_UUID not set — skipping sub push[/yellow]")
+        return
+    exit_nodes = nm.exit_nodes()
+    bridge_nodes = nm.bridge_nodes()
+    if not bridge_nodes:
+        console.print("[yellow]⚠ No bridge nodes — skipping sub push[/yellow]")
+        return
+
+    try:
+        with console.status("Генерация и push подписки на портал..."):
+            content = cg.generate_subscription(exit_nodes, bridge_nodes=bridge_nodes)
+            raw_uris = cg.generate_subscription_plain(exit_nodes, bridge_nodes=bridge_nodes)
+
+            # connections.json
+            conn_entries = []
+            for uri in raw_uris:
+                label = _urlparse.unquote(uri.split("#")[-1]) if "#" in uri else ""
+                proto = uri.split("://")[0]
+                parts = label.split(" | ")
+                conn_entries.append({
+                    "uri": uri, "label": label, "protocol": proto,
+                    "region": parts[1].strip() if len(parts) > 1 else "",
+                    "node": parts[2].strip() if len(parts) > 2 else "",
+                    "type": parts[3].strip() if len(parts) > 3 else "",
+                    "via_bridge": "via" in label.lower(),
+                })
+            connections_json = _json.dumps({
+                "updated_at": _dt.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "uris": conn_entries,
+            }, ensure_ascii=False, indent=2)
+
+            # awg_info.json
+            global_cfg_awg = cg._load_global().get("amneziawg", {})
+            awg_nodes = {}
+            for nd in exit_nodes:
+                sec = cg.load_secrets(nd.name)
+                if sec.get("awg_public_key"):
+                    peers = sec.get("awg_peers", [])
+                    vpn_links = []
+                    for p in peers:
+                        if p.get("private_key"):
+                            link = cg.generate_amneziawg_vpn_link(nd, sec, p)
+                            vpn_links.append({
+                                "name": p.get("name", "default"),
+                                "address": p.get("address", ""),
+                                "vpn_link": link,
+                            })
+                    awg_nodes[nd.name] = {
+                        "display_name": nd.display_name,
+                        "region": nd.region.upper(),
+                        "endpoint": f"{nd.ip}:51820",
+                        "public_key": sec["awg_public_key"],
+                        "jc": int(global_cfg_awg.get("jc", 4)),
+                        "jmin": int(global_cfg_awg.get("jmin", 40)),
+                        "jmax": int(global_cfg_awg.get("jmax", 70)),
+                        "s1": int(sec.get("awg_s1", 0)),
+                        "s2": int(sec.get("awg_s2", 0)),
+                        "h1": int(sec.get("awg_h1", 1)),
+                        "h2": int(sec.get("awg_h2", 2)),
+                        "h3": int(sec.get("awg_h3", 3)),
+                        "h4": int(sec.get("awg_h4", 4)),
+                        "peers": vpn_links,
+                    }
+            awg_json = _json.dumps(awg_nodes, ensure_ascii=False, indent=2)
+
+            # Write locally
+            runtime_dir = PROJECT_ROOT / "deploy" / "portal" / "runtime"
+            runtime_dir.mkdir(parents=True, exist_ok=True)
+            (runtime_dir / "subscription.b64").write_text(content, encoding="utf-8")
+            (runtime_dir / "connections.json").write_text(connections_json, encoding="utf-8")
+            (runtime_dir / "awg_info.json").write_text(awg_json, encoding="utf-8")
+
+            # Upload to management bridge
+            mgmt = bridge_nodes[0]
+            remote_rt = "/opt/bulwark/deploy/portal/runtime"
+            with nm.ssh(mgmt) as conn:
+                for fname in ("subscription.b64", "connections.json", "awg_info.json"):
+                    conn.upload_file(str(runtime_dir / fname), f"{remote_rt}/{fname}")
+
+        console.print(f"[green]✓ Subscription pushed ({len(raw_uris)} URIs)[/green]")
+    except Exception as exc:
+        console.print(f"[yellow]⚠ Sub push failed: {exc}[/yellow]")
+
+
+def _post_deploy_bot_sync() -> None:
+    """Sync core project files to management bridge and restart service."""
+    nm = get_nm()
+    bridge_nodes = nm.bridge_nodes()
+    if not bridge_nodes:
+        console.print("[yellow]⚠ No bridge nodes — skipping bot sync[/yellow]")
+        return
+
+    mgmt = bridge_nodes[0]
+    remote_root = "/opt/bulwark"
+
+    try:
+        with console.status(f"Синхронизация файлов на {mgmt.display_name}..."):
+            with nm.ssh(mgmt) as conn:
+                # Sync individual files
+                for rel in BOT_SYNC_FILES:
+                    local = PROJECT_ROOT / rel
+                    if local.exists():
+                        conn.upload_file(str(local), f"{remote_root}/{rel}")
+
+                # Sync directories (bot package, secrets, templates)
+                for rel_dir in BOT_SYNC_DIRS:
+                    local_dir = PROJECT_ROOT / rel_dir
+                    if not local_dir.exists():
+                        continue
+                    for local_file in local_dir.rglob("*"):
+                        if local_file.is_file() and "__pycache__" not in str(local_file):
+                            rel = local_file.relative_to(PROJECT_ROOT).as_posix()
+                            conn.upload_file(str(local_file), f"{remote_root}/{rel}")
+
+                # Restart management service if active
+                _, _, rc = conn.exec("systemctl is-active bulwark-monitor 2>/dev/null")
+                if rc == 0:
+                    conn.exec("systemctl restart bulwark-monitor")
+
+        console.print(f"[green]✓ Files synced to {mgmt.display_name}[/green]")
+    except Exception as exc:
+        console.print(f"[yellow]⚠ Bot sync failed: {exc}[/yellow]")
 
 
 def _notify_deploy_complete(node: Node) -> None:

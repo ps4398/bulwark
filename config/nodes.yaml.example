@@ -15,7 +15,7 @@ nodes:
     ssh_key_path: ""
     ssh_password_env: "MANAGEMENT_SSH_PASSWORD"
     role: bridge
-    region: ru
+    region: de
     priority: 1
     enabled: true
     protocols: []
