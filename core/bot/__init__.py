@@ -67,39 +67,39 @@ class BulwarkBot(
         # --- Callback handler factories ---
         def h0(m):
             async def _h(cb: CallbackQuery):
-                await cb.answer()
+                asyncio.ensure_future(cb.answer())
                 await m(cb.message.chat.id, cb.message.message_id)
             return _h
 
         def h1(m):
             async def _h(cb: CallbackQuery):
-                await cb.answer()
+                asyncio.ensure_future(cb.answer())
                 await m(cb.message.chat.id, cb.message.message_id, cb.data.split(":", 1)[1])
             return _h
 
         def h2(m):
             async def _h(cb: CallbackQuery):
-                await cb.answer()
+                asyncio.ensure_future(cb.answer())
                 p = cb.data.split(":")
                 await m(cb.message.chat.id, cb.message.message_id, p[1], p[2])
             return _h
 
         def h3(m):
             async def _h(cb: CallbackQuery):
-                await cb.answer()
+                asyncio.ensure_future(cb.answer())
                 p = cb.data.split(":")
                 await m(cb.message.chat.id, cb.message.message_id, p[1], p[2], p[3])
             return _h
 
         def hf0(m):
             async def _h(cb: CallbackQuery, state: FSMContext):
-                await cb.answer()
+                asyncio.ensure_future(cb.answer())
                 await m(cb.message.chat.id, cb.message.message_id, state)
             return _h
 
         def hf1(m):
             async def _h(cb: CallbackQuery, state: FSMContext):
-                await cb.answer()
+                asyncio.ensure_future(cb.answer())
                 await m(cb.message.chat.id, cb.message.message_id, cb.data.split(":", 1)[1], state)
             return _h
 
@@ -111,6 +111,7 @@ class BulwarkBot(
         r.callback_query.register(h2(self._do_restart),           F.data.startswith("restart:"))
         r.callback_query.register(h1(self._show_logs),            F.data.startswith("logs:"))
         r.callback_query.register(h0(self._traffic_all),          F.data == "traffic")
+        r.callback_query.register(h0(self._traffic_month),        F.data == "traffic_month")
         # Subscriptions
         r.callback_query.register(h0(self._sub_nodes),            F.data == "sub")
         r.callback_query.register(h1(self._sub_protos),           F.data.startswith("sub_node:"))
@@ -161,7 +162,7 @@ class BulwarkBot(
         r.callback_query.register(hf0(self._node_add_confirm),    F.data == "node_add_confirm")
 
         async def _cancel_node_add(cb: CallbackQuery, state: FSMContext):
-            await cb.answer()
+            asyncio.ensure_future(cb.answer())
             await state.clear()
             await self._node_mgmt(cb.message.chat.id, cb.message.message_id)
         r.callback_query.register(_cancel_node_add, F.data == "node_add_cancel")
@@ -246,6 +247,10 @@ class BulwarkBot(
     # ------------------------------------------------------------------
 
     async def run(self, with_monitor: bool = True) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+        loop = asyncio.get_running_loop()
+        loop.set_default_executor(ThreadPoolExecutor(max_workers=20))
+
         await self._set_commands()
         print("[bot] Запуск aiogram polling...")
 

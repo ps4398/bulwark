@@ -383,16 +383,15 @@ class NodeMonitor:
                 continue
 
             loop = asyncio.get_event_loop()
-            for bridge in probe_bridges:
-                try:
-                    await loop.run_in_executor(
-                        None,
-                        self._run_bridge_probe,
-                        bridge,
-                        exit_nodes,
+            await asyncio.gather(
+                *(
+                    loop.run_in_executor(
+                        None, self._run_bridge_probe, bridge, exit_nodes,
                     )
-                except Exception as e:
-                    print(f"[monitor] bridge_probe {bridge.name}: {e}")
+                    for bridge in probe_bridges
+                ),
+                return_exceptions=True,
+            )
 
     def _run_bridge_probe(
         self, bridge: "Node", exit_nodes: list["Node"]

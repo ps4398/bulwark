@@ -29,7 +29,8 @@ apt-get install -y -qq \
     lsof \
     ca-certificates \
     gnupg \
-    lsb-release
+    lsb-release \
+    vnstat
 
 # iptables-persistent is optional — not available on nftables-based systems
 apt-get install -y -qq iptables-persistent netfilter-persistent 2>/dev/null || \

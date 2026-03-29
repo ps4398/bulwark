@@ -42,7 +42,7 @@ class StatusMixin:
             statuses, source = {}, "нет монитора"
 
         lines = [f"<b>Статус нод</b> ({source}):"]
-        for node in self.nm.all_nodes():
+        for node in self.nm.enabled_nodes():
             st = statuses.get(node.name)
             if st is None:
                 lines.append(f"\n⚪ <b>{node.name}</b>  нет данных")
@@ -59,9 +59,9 @@ class StatusMixin:
 
         lines.append(f"\n<i>{_now_utc()}</i>")
 
-        all_nodes = self.nm.all_nodes()
+        vis_nodes = self.nm.enabled_nodes()
         node_btns: list[tuple[str, str]] = []
-        for n in all_nodes:
+        for n in vis_nodes:
             st = statuses.get(n.name)
             h = "🟢" if (st and st.overall_healthy) else ("🔴" if st else "⚪")
             role = "🌉" if n.is_bridge else "🚀"

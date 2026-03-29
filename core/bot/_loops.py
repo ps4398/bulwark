@@ -60,19 +60,19 @@ class LoopsMixin:
             f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
         ]
         lines.append("\n<b>Статус нод:</b>")
-        for node in self.nm.all_nodes():
+        for node in self.nm.enabled_nodes():
             st = cached.get(node.name)
             h = "🟢" if (st and st.overall_healthy) else ("🔴" if st else "⚪")
             icmp = f"  {st.icmp_latency_ms:.0f}ms" if (st and st.icmp_latency_ms) else ""
             lines.append(f"  {h} {node.name}{icmp}")
 
-        exit_nodes = self.nm.exit_nodes()
+        all_nodes = self.nm.enabled_nodes()
         traffic_results = await asyncio.gather(
-            *[self._run(self._fetch_traffic_ssh, n) for n in exit_nodes],
+            *[self._run(self._fetch_traffic_ssh, n) for n in all_nodes],
             return_exceptions=True,
         )
         lines.append("\n<b>Трафик за месяц:</b>")
-        for node, tr in zip(exit_nodes, traffic_results):
+        for node, tr in zip(all_nodes, traffic_results):
             if isinstance(tr, Exception) or (isinstance(tr, dict) and tr.get("error") and not tr.get("month")):
                 lines.append(f"  {node.name}: N/A")
             elif isinstance(tr, dict) and tr.get("month"):

@@ -44,8 +44,92 @@ class TrafficMixin:
                 lines.append(f"   <i>⚠️ {result['error']}</i>")
 
         lines.append(f"\n<i>{_now_utc()}</i>")
-        markup = _kb([[("🔄 Обновить", "traffic"), ("🏠 Меню", "menu")]])
+        markup = _kb([
+            [("📅 За месяц", "traffic_month"), ("🔄 Обновить", "traffic"), ("🏠 Меню", "menu")],
+        ])
         await self._edit(chat_id, msg_id, "\n".join(lines), markup)
+
+    # ------------------------------------------------------------------
+    # Monthly traffic breakdown
+    # ------------------------------------------------------------------
+
+    async def _traffic_month(
+        self, chat_id: int | str, msg_id: Optional[int] = None,
+    ) -> None:
+        msg_id = await self._show(chat_id, msg_id, "⏳ Собираю помесячный трафик...")
+
+        nodes = self.nm.enabled_nodes()
+        results = await asyncio.gather(
+            *[self._run(self._fetch_monthly_ssh, n) for n in nodes],
+            return_exceptions=True,
+        )
+
+        lines = ["<b>Трафик по месяцам:</b>"]
+        for node, result in zip(nodes, results):
+            lines.append(f"\n📊 <b>{node.name}</b> {_flag(node.region)}")
+            if isinstance(result, Exception):
+                lines.append(f"   ❌ {result}")
+                continue
+            if result.get("error"):
+                lines.append(f"   ⚠️ {result['error']}")
+                continue
+            for entry in result.get("months", []):
+                lines.append(f"   {entry['label']}  ↓{entry['rx']}  ↑{entry['tx']}")
+            if not result.get("months"):
+                lines.append("   нет данных")
+
+        lines.append(f"\n<i>{_now_utc()}</i>")
+        markup = _kb([
+            [("📊 Сегодня/месяц", "traffic"), ("🏠 Меню", "menu")],
+        ])
+        await self._edit(chat_id, msg_id, "\n".join(lines), markup)
+
+    def _fetch_monthly_ssh(self, node) -> dict:
+        """Get monthly traffic breakdown via vnstat --json m."""
+        try:
+            iface_out, _, _ = self.nm.exec_command(
+                node, "ip route | awk '/default/{print $5; exit}'", timeout=10,
+            )
+            iface = iface_out.strip() or "eth0"
+        except Exception as e:
+            return {"error": str(e)}
+
+        try:
+            out, _, _ = self.nm.exec_command(
+                node, f"vnstat -i {iface} --json m 2>/dev/null", timeout=15,
+            )
+        except Exception as e:
+            return {"error": str(e)}
+
+        if not out.strip():
+            return {"error": "vnstat не установлен или нет данных"}
+
+        try:
+            data = json.loads(out)
+        except json.JSONDecodeError as e:
+            return {"error": f"vnstat JSON: {e}"}
+
+        try:
+            ifaces = data.get("interfaces", [])
+            if not ifaces:
+                return {"error": "vnstat: нет интерфейсов"}
+            ifc = max(
+                ifaces,
+                key=lambda i: i.get("traffic", {}).get("total", {}).get("rx", 0),
+            )
+            months_data = ifc.get("traffic", {}).get("month", [])
+            months = []
+            for m in months_data[-6:]:
+                dt = m.get("date", {})
+                label = f"{dt.get('year', '?')}-{dt.get('month', '?'):02d}"
+                months.append({
+                    "label": label,
+                    "rx": _fmt_bytes(m.get("rx", 0)),
+                    "tx": _fmt_bytes(m.get("tx", 0)),
+                })
+            return {"months": months}
+        except (KeyError, TypeError) as e:
+            return {"error": f"vnstat parse: {e}"}
 
     # ------------------------------------------------------------------
     # SSH-based traffic collection (blocking, for executor)
